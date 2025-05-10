@@ -1,0 +1,79 @@
+<?php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use App\Models\Course;
+use App\Models\Module;
+use App\Models\Lesson;
+
+class SyncS3Cursos extends Command
+{
+    protected $signature = 's3:sync-cursos';
+    protected $description = 'Sincroniza cursos, módulos e aulas com base na estrutura do S3';
+
+    public function handle()
+    {
+        $bucketRoot = 'fitness/';
+        $arquivos = Storage::disk('s3')->allFiles($bucketRoot);
+
+        foreach ($arquivos as $caminho) {
+            // ignora arquivos ocultos ou inválidos
+            if (str_contains($caminho, '/.')) continue;
+
+            $extensao = pathinfo($caminho, PATHINFO_EXTENSION);
+            $tipo = $this->getTipoAula($extensao);
+
+            if (!$tipo) continue;
+
+            $partes = explode('/', $caminho);
+            if (count($partes) < 5) continue;
+
+            [$_idiomas, $categoria, $cursoNome, $moduloNome, $arquivo] = $partes;
+
+            $curso = Course::firstOrCreate(
+                ['title' => $cursoNome],
+                [
+                    'category' => $categoria,
+                    'slug' => Str::slug($cursoNome),
+                ]
+            );
+
+            $modulo = Module::firstOrCreate([
+                'course_id' => $curso->id,
+                'title' => $moduloNome,
+            ], [
+                'slug' => Str::slug($moduloNome),
+            ]);
+
+            $aulaTitulo = pathinfo($arquivo, PATHINFO_FILENAME);
+            $mediaPath = '/' . $caminho;
+
+            Lesson::updateOrCreate([
+                'module_id' => $modulo->id,
+                'title' => $aulaTitulo,
+            ], [
+                'file_path'   => $caminho,
+                'file_type'   => $tipo,
+                'content_url' => 'https://api.omnicursos.com.br/api/media?path=' . rawurlencode($mediaPath),
+            ]);
+
+            $this->line("✔ $cursoNome > $moduloNome > $aulaTitulo ($tipo)");
+        }
+
+        $this->info('✅ Sincronização finalizada.');
+    }
+
+    private function getTipoAula($ext)
+    {
+        return match (strtolower($ext)) {
+            'mp4' => 'video',
+            'pdf' => 'pdf',
+            'mp3', 'wav' => 'audio',
+            'xlsx', 'xls', 'csv' => 'link',
+            default => null,
+        };
+    }
+}

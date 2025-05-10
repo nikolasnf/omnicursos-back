@@ -1,0 +1,35 @@
+<?php
+
+use App\Http\Controllers\Users\UserController;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthWebController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CourseController;
+use App\Http\Controllers\Api\HomeController;
+use App\Http\Controllers\Api\LeadController;
+use App\Http\Controllers\Api\AuthController;
+
+
+require __DIR__.'/auth.php';
+
+Route::middleware('auth:api')->group(function () {
+    Route::get('/user', [UserController::class, 'show'])
+        ->name('user.show');
+});
+
+Route::middleware(['auth:api', 'verified'])->group(function () {
+    Route::patch('/user', [UserController::class, 'update'])
+        ->name('user.update');
+
+    Route::patch('/user/change-password', [UserController::class, 'changePassword'])
+        ->name('user.change-password');
+});
+
+Route::post('/login', [AuthWebController::class, 'login']);
+Route::middleware('auth')->post('/logout', [AuthWebController::class, 'logout']);
+Route::get('/categorias-com-cursos', [CategoryController::class, 'index']);
+Route::get('/categorias/{slug}/cursos', [CourseController::class, 'getByCategory']);
+Route::get('/home/cursos', [HomeController::class, 'featuredCourses']);
+Route::post('/leads', [LeadController::class, 'store']);
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);

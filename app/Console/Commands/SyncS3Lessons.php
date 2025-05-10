@@ -1,0 +1,79 @@
+<?php
+
+namespace App\Console\Commands;
+
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use App\Models\Module;
+use App\Models\Lesson;
+
+class SyncS3Lessons extends Command
+{
+    protected $signature = 's3:sync-lessons';
+    protected $description = 'Sincroniza as aulas a partir do path dos módulos, varrendo arquivos recursivamente';
+
+    private function getVideoDuration($url)
+    {
+        $command = "ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 \"$url\"";
+        $output = shell_exec($command);
+        return $output ? trim($output) : null;
+    }
+
+    public function handle()
+    {
+        $modulos = Module::all();
+
+        foreach ($modulos as $modulo) {
+
+            $basePath = $modulo->path;
+            if (!Storage::disk('s3')->exists($basePath)) {
+                $this->warn("⚠ Pasta não encontrada: $basePath");
+                continue;
+            }
+
+            $arquivos = Storage::disk('s3')->allFiles($basePath);
+
+            foreach ($arquivos as $filePath) {
+                $fileName = basename($filePath);
+                $ext = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+
+                if (in_array($ext, ['mp4', 'pdf', 'mp3', 'wav', 'xlsx', 'xls', 'csv'])) {
+                    $tipo = match ($ext) {
+                        'mp4' => 'video',
+                        'pdf' => 'pdf',
+                        'mp3', 'wav' => 'audio',
+                        'xlsx', 'xls', 'csv' => 'link',
+                        default => null,
+                    };
+
+                    if ($tipo === 'video') {
+                    // gerar link assinado (ajuste para seu sistema)
+                        if($modulo->parent != 0){
+                            $signedUrl = Storage::disk('s3')->temporaryUrl($filePath, now()->addMinutes(5));
+                            //$duracao = $this->getVideoDuration($signedUrl);
+                        }
+                    } else {
+                        $duracao = null;
+                    }
+
+                    $titulo = pathinfo($fileName, PATHINFO_FILENAME);
+
+                    Lesson::updateOrCreate([
+                        'module_id' => $modulo->id,
+                        'title' => $titulo,
+                    ], [
+                        'path' => $filePath,
+                        'content_type' => $tipo,
+                        'content_url' => 'https://api.omnicursos.com.br/api/media?path=' . rawurlencode('/' . $filePath),
+			// 'duration' => $duracao
+                    ]);
+
+                    $this->line("✔ Aula criada: $titulo ($tipo)");
+                }
+            }
+        }
+
+        $this->info('✅ Sincronização de aulas concluída.');
+    }
+}
