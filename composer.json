@@ -15,7 +15,7 @@
         "laravel/tinker": "^2.8",
         "league/flysystem-aws-s3-v3": "^3.0",
         "sendinblue/api-v3-sdk": "^8.4",
-        "stripe/stripe-php": "^17.1",
+        "stripe/stripe-php": "^22.0",
         "tymon/jwt-auth": "^2.0"
     },
     "require-dev": {
